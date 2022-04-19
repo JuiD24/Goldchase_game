@@ -54,6 +54,10 @@ int main(int argc, char *argv[]){
         if(semCloseError == -1){
           perror("ERROR closing semaphore");
         }
+        int semUnlinkError = sem_unlink("/goldchase_semaphore"); 
+        if(semUnlinkError == -1){
+           perror("ERROR unlinking semaphore");
+        }
         return 2; 
       }
 
@@ -129,6 +133,10 @@ int main(int argc, char *argv[]){
 
       if(ret == MAP_FAILED){
         cerr << "Error on mmap\n";
+        int closeError = close(shared_mem_fd);
+        if(closeError == -1){
+          perror("ERROR closing shared memory");
+        }
         int shmUnlinkError = shm_unlink("/goldmemory");
         if(shmUnlinkError == -1){
           perror("ERROR unlinking shared memory");
@@ -154,6 +162,14 @@ int main(int argc, char *argv[]){
       // If unable to open:  close & remove semaphore, and exit  
       if(! mapfile){
         cerr <<"Error opening map file";
+        int closeError = close(shared_mem_fd);
+        if(closeError == -1){
+          perror("ERROR closing shared memory");
+        }
+        int shmUnlinkError = shm_unlink("/goldmemory");
+        if(shmUnlinkError == -1){
+          perror("ERROR unlinking shared memory");
+        }
         int semCloseError = sem_close(mysemaphore); 
         if(semCloseError == -1){
           perror("ERROR closing semaphore");
@@ -250,25 +266,56 @@ int main(int argc, char *argv[]){
         cerr << e.what() << '\n';
         // if no players remain, close and delete
         // shared memory and semaphore
-        if((gmp->players & ~current_player) == 0)
-        {
+        int syscall_result=sem_wait(mysemaphore); //"grab" or "take" a semaphore
+        if(syscall_result==-1) { 
+          perror("Failed sem_wait"); 
           int closeError = close(shared_mem_fd);
           if(closeError == -1){
             perror("ERROR closing shared memory");
-          }
-          int shmUnlinkError = shm_unlink("/goldmemory");
-          if(shmUnlinkError == -1){
-            perror("ERROR unlinking shared memory");
           }
           int semCloseError = sem_close(mysemaphore); 
           if(semCloseError == -1){
             perror("ERROR closing semaphore");
           }
-          int semUnlinkError = sem_unlink("/goldchase_semaphore");
+          return 2; 
+        }
+
+        gmp->map[player_position] = 0;
+        gmp->players &= ~current_player;
+
+        syscall_result = sem_post(mysemaphore); // release the semaphore
+        if(syscall_result==-1) { 
+        perror("Failed sem_post"); 
+        int closeError = close(shared_mem_fd);
+        if(closeError == -1){
+          perror("ERROR closing shared memory");
+        }
+        int semCloseError = sem_close(mysemaphore); 
+        if(semCloseError == -1){
+          perror("ERROR closing semaphore");
+        }
+        return 2; 
+        }
+
+        int closeError = close(shared_mem_fd);
+        if(closeError == -1){
+          perror("ERROR closing shared memory");
+        }
+        int semCloseError = sem_close(mysemaphore); 
+        if(semCloseError == -1){
+          perror("ERROR closing semaphore");
+        }
+
+        if(gmp->players == 0)
+        {
+          int shmUnlinkError = shm_unlink("/goldmemory"); 
+          if(shmUnlinkError == -1){
+            perror("ERROR unlinking shared memory");
+          }
+          int semUnlinkError = sem_unlink("/goldchase_semaphore"); 
           if(semUnlinkError == -1){
             perror("ERROR unlinking semaphore");
           }
-          exit(1);
         }
         exit(1);
       } 
@@ -383,7 +430,7 @@ int main(int argc, char *argv[]){
           perror("ERROR closing semaphore");
         }
         return 2; 
-        } 
+      } 
       
       try {
         pointer_to_rendering_map= make_unique<Map>(gmp->map, rows, cols);
@@ -391,19 +438,52 @@ int main(int argc, char *argv[]){
         cerr << e.what() << '\n';
         // if no players remain, close and delete
         // shared memory and semaphore
-        if((gmp->players & ~current_player) == 0)
-        {
+
+        int syscall_result=sem_wait(mysemaphore); //"grab" or "take" a semaphore
+        if(syscall_result==-1) { 
+          perror("Failed sem_wait"); 
           int closeError = close(shared_mem_fd);
           if(closeError == -1){
             perror("ERROR closing shared memory");
           }
-          int shmUnlinkError = shm_unlink("/goldmemory"); 
-          if(shmUnlinkError == -1){
-            perror("ERROR unlinking shared memory");
-          }
           int semCloseError = sem_close(mysemaphore); 
           if(semCloseError == -1){
             perror("ERROR closing semaphore");
+          }
+          return 2; 
+        }
+
+        gmp->map[player_position] = 0;
+        gmp->players &= ~current_player;
+
+        syscall_result = sem_post(mysemaphore); // release the semaphore
+        if(syscall_result==-1) { 
+        perror("Failed sem_post"); 
+        int closeError = close(shared_mem_fd);
+        if(closeError == -1){
+          perror("ERROR closing shared memory");
+        }
+        int semCloseError = sem_close(mysemaphore); 
+        if(semCloseError == -1){
+          perror("ERROR closing semaphore");
+        }
+        return 2; 
+        }
+
+        int closeError = close(shared_mem_fd);
+        if(closeError == -1){
+          perror("ERROR closing shared memory");
+        }
+        int semCloseError = sem_close(mysemaphore); 
+        if(semCloseError == -1){
+          perror("ERROR closing semaphore");
+        }
+
+        if(gmp->players == 0)
+        {
+          int shmUnlinkError = shm_unlink("/goldmemory"); 
+          if(shmUnlinkError == -1){
+            perror("ERROR unlinking shared memory");
           }
           int semUnlinkError = sem_unlink("/goldchase_semaphore"); 
           if(semUnlinkError == -1){
@@ -420,7 +500,7 @@ int main(int argc, char *argv[]){
 
   
   char ch;
-  int prev_position;
+  int prev_position=0;
   bool foundGold = false;
   bool wasPureGold = false;
   bool wasFoosGold = false;
@@ -431,7 +511,7 @@ int main(int argc, char *argv[]){
               pointer_to_rendering_map->postNotice("You Won !");
               break;
             }
-            if((((player_position%gmp->cols) + 1) < gmp->cols) && (gmp->map[player_position + 1] != G_WALL)){
+            if((((player_position%gmp->cols)) < gmp->cols - 1) && (player_position + 1 < gmp->cols*gmp->rows) && (gmp->map[player_position + 1] != G_WALL)){
               prev_position = player_position;
               player_position += 1;              
             }
@@ -458,7 +538,7 @@ int main(int argc, char *argv[]){
               pointer_to_rendering_map->postNotice("You Won !");
               break;
               }
-              if((((player_position%gmp->cols) - 1) >= 0) && (gmp->map[player_position - 1] != G_WALL)){
+              if((((player_position%gmp->cols)) > 0) && (player_position - 1 >= 0) && (gmp->map[player_position - 1] != G_WALL)){
               prev_position = player_position;
               player_position -= 1;           
             }
@@ -478,11 +558,10 @@ int main(int argc, char *argv[]){
             exit(1);
           }
           
+          
           if(gmp->map[player_position] & G_ANYP){
-            //  pointer_to_rendering_map->postNotice("inside if");
             gmp->map[player_position] |= current_player;
           }else{
-            // pointer_to_rendering_map->postNotice("inside else");
             if(gmp->map[player_position] == G_GOLD){
               wasPureGold = true;
             }
@@ -497,7 +576,7 @@ int main(int argc, char *argv[]){
           }else{
             gmp->map[prev_position] = 0;
           }
-
+          
           syscall_result=sem_post(mysemaphore); // release the semaphore
           if(syscall_result==-1) { 
             perror("Failed sem_post");
